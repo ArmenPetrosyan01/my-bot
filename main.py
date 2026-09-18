@@ -58,7 +58,14 @@ async def broadcast_to_shift(message: types.Message):
         )
         return
 
-    sender_name = message.from_user.full_name
+    # Формируем корректное имя отправителя (если имя/фамилия не указаны)
+    first_name = message.from_user.first_name or ""
+    last_name = message.from_user.last_name or ""
+    sender_name = f"{first_name} {last_name}".strip()
+
+    if not sender_name:
+        sender_name = message.from_user.username or "Пользователь"
+
     caption_prefix = f"От: {sender_name}\n\n"
 
     recipients = [uid for uid in active_shifts if uid != user_id]
@@ -98,7 +105,7 @@ async def broadcast_to_shift(message: types.Message):
         except Exception as e:
             logging.error(f"Ошибка отправки: {e}")
 
-    await message.answer("Сообщение отправлено бригаде на смене.")
+    # Лишний автоответ ("Сообщение отправлено...") удален!
 
 
 async def main():
