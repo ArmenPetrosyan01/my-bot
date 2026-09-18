@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
@@ -9,9 +11,7 @@ API_TOKEN = "8915334520:AAG3BVLL8xOXXoUxgIatriP0WmNF257x3_U"
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Множество для хранения ID активных дежурных
 active_shifts = set()
-
 
 def get_main_keyboard(is_on_shift: bool):
     if is_on_shift:
@@ -19,7 +19,6 @@ def get_main_keyboard(is_on_shift: bool):
     else:
         btn = KeyboardButton(text="🟢 Начать смену")
     return ReplyKeyboardMarkup(keyboard=[[btn]], resize_keyboard=True)
-
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -29,7 +28,6 @@ async def cmd_start(message: types.Message):
         reply_markup=get_main_keyboard(is_on),
     )
 
-
 @dp.message(F.text == "🟢 Начать смену")
 async def start_shift(message: types.Message):
     active_shifts.add(message.from_user.id)
@@ -38,7 +36,6 @@ async def start_shift(message: types.Message):
         reply_markup=get_main_keyboard(True),
     )
 
-
 @dp.message(F.text == "🔴 Завершить смену")
 async def end_shift(message: types.Message):
     active_shifts.discard(message.from_user.id)
@@ -46,7 +43,6 @@ async def end_shift(message: types.Message):
         "Смена завершена. Хорошего отдыха!",
         reply_markup=get_main_keyboard(False),
     )
-
 
 @dp.message()
 async def broadcast_to_shift(message: types.Message):
@@ -58,7 +54,6 @@ async def broadcast_to_shift(message: types.Message):
         )
         return
 
-    # Формируем корректное имя отправителя (если имя/фамилия не указаны)
     first_name = message.from_user.first_name or ""
     last_name = message.from_user.last_name or ""
     sender_name = f"{first_name} {last_name}".strip()
@@ -67,13 +62,10 @@ async def broadcast_to_shift(message: types.Message):
         sender_name = message.from_user.username or "Пользователь"
 
     caption_prefix = f"От: {sender_name}\n\n"
-
     recipients = [uid for uid in active_shifts if uid != user_id]
 
     if not recipients:
-        await message.answer(
-            "На смене пока только вы. Сообщение некому пересылать."
-        )
+        await message.answer("На смене пока только вы. Сообщение некому пересылать.")
         return
 
     for recipient_id in recipients:
@@ -86,15 +78,11 @@ async def broadcast_to_shift(message: types.Message):
             elif message.photo:
                 photo_id = message.photo[-1].file_id
                 caption = caption_prefix + (message.caption or "")
-                await bot.send_photo(
-                    chat_id=recipient_id, photo=photo_id, caption=caption
-                )
+                await bot.send_photo(chat_id=recipient_id, photo=photo_id, caption=caption)
             elif message.video:
                 video_id = message.video.file_id
                 caption = caption_prefix + (message.caption or "")
-                await bot.send_video(
-                    chat_id=recipient_id, video=video_id, caption=caption
-                )
+                await bot.send_video(chat_id=recipient_id, video=video_id, caption=caption)
             elif message.voice:
                 caption = caption_prefix + (message.caption or "")
                 await bot.send_voice(
@@ -105,12 +93,22 @@ async def broadcast_to_shift(message: types.Message):
         except Exception as e:
             logging.error(f"Ошибка отправки: {e}")
 
-    # Лишний автоответ ("Сообщение отправлено...") удален!
+# Минимальный веб-сервер, чтобы Render не выдавал ошибку Deploy Failed
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
 
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 async def main():
+    await start_web_server()
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
